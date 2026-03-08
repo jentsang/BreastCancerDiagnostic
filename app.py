@@ -260,6 +260,7 @@ def server(input, output, session):
         fig.update_layout(height=400, margin=dict(l=10,r=10,b=10,t=10), template="simple_white")
         return fig
     
+    # --- Feature Importance Output ---
     @render.ui
     def feature_drivers():
         X = get_patient().drop(columns=['diagnosis'])
@@ -267,20 +268,55 @@ def server(input, output, session):
         # 1. XGBoost Top Feature
         importances = xgb_model.feature_importances_
         indices = np.argsort(importances)[::-1]
-        top_feat_name = X.columns[indices[0]]
+        raw_xgb_name = X.columns[indices[0]]
+        top_feat_name = translate_feature(raw_xgb_name)
         top_feat_weight = importances[indices[0]]
         
-        # 2. GMM "Anomalous" Feature (Feature with highest deviation)
-        # This identifies which physical trait pushed the patient into their cluster
+        # 2. GMM "Anomalous" Feature
         X_scaled = scaler_global.transform(X)
         top_deviant_idx = np.argmax(np.abs(X_scaled))
-        top_deviant_name = X.columns[top_deviant_idx]
+        raw_gmm_name = X.columns[top_deviant_idx]
+        top_deviant_name = translate_feature(raw_gmm_name)
         
         return ui.div(
-            ui.p(ui.tags.b("Prediction Model: "), f"{top_feat_name.replace('_', ' ').title()}"),
+            ui.p(ui.tags.b("Prediction Model: "), top_feat_name, style="font-size: 0.85rem; margin-bottom: 2px;"),
             ui.p(ui.tags.small(f"Contribution Weight: {top_feat_weight*100:.1f}%"), class_="text-muted"),
-            ui.p(ui.tags.b("Cluster Model 1: "), f"{top_deviant_name.replace('_', ' ').title()}"),
-            class_="p-2 border rounded bg-light"
+            ui.p(ui.tags.b("Cluster Model 1: "), top_deviant_name, style="font-size: 0.85rem; margin-bottom: 0;"),
+            class_="p-1 border rounded bg-light"
         )
+    
+    # --- Helper for Feature Translation ---
+    def translate_feature(col_name):
+        # Mapping of base features
+        base_map = {
+            "radius": "Radius",
+            "texture": "Texture",
+            "perimeter": "Perimeter",
+            "area": "Area",
+            "smoothness": "Smoothness",
+            "compactness": "Compactness",
+            "concavity": "Concavity",
+            "concave points": "Concave Points",
+            "symmetry": "Symmetry",
+            "fractal dimension": "Fractal Dimension"
+        }
+    
+        name_lower = col_name.lower().replace("_", " ")
+        
+        # Identify the suffix type
+        if "worst" in name_lower:
+            suffix = " (Worst)"
+        elif "se" in name_lower or "error" in name_lower:
+            suffix = " (Standard Error)"
+        else:
+            suffix = " (Mean)"
+            
+        # Find the base name and combine
+        for key, value in base_map.items():
+            if key in name_lower:
+                return f"{value}{suffix}"
+                
+        return col_name.title() # Fallback
+
 
 app = App(app_ui, server)
