@@ -48,6 +48,8 @@ app_ui = ui.page_navbar(
                 height: 160px !important; 
                 border-radius: 12px; 
             }
+            .bg-orange { background-color: #ff7f0e !important; color: white !important; }
+            .bg-pink { background-color: #e377c2 !important; color: white !important; }
         """)
     ),
     ui.nav_panel(
@@ -64,7 +66,7 @@ app_ui = ui.page_navbar(
         
         ui.layout_columns(
             ui.card(
-                ui.card_header("Clinical Decision Support", class_="bg-dark text-white"),
+                ui.card_header("Clinical Decision Support", class_="bg-primary text-white"),
                 ui.input_select("selected_patient", "Select Patient Profile:", choices=patient_choices),
                 ui.hr(),
                 ui.h5("Ensemble Decision Status"),
@@ -75,14 +77,17 @@ app_ui = ui.page_navbar(
                     ui.output_text("true_label"),
                     class_="p-2 bg-light rounded"
                 ),
+                ui.hr(),
+                ui.h5("Key Diagnostic Drivers"),
+                ui.output_ui("feature_drivers"),
             ),
             ui.div(
                 ui.card(
-                    ui.card_header("Cytology Risk Map (Benign vs Malignant)", class_="bg-secondary text-white"),
+                    ui.card_header("Cytology Risk Map (Benign vs Malignant) - Cluster Model 1", class_="bg-primary text-white"),
                     output_widget("global_plot", height="400px")
                 ),
                 ui.card(
-                    ui.card_header("Malignant Biopsy Risk Stratification", class_="bg-secondary text-white"),
+                    ui.card_header("Malignant Biopsy Risk Stratification - Cluster Model 1", class_="bg-primary text-white"),
                     output_widget("malig_plot", height="400px")
                 ),
             ),
@@ -107,16 +112,16 @@ def server(input, output, session):
         X = get_patient().drop(columns=['diagnosis'])
         probs = xgb_model.predict_proba(X)[0]
         max_prob = np.max(probs)
-        prediction = "MALIGNANT" if np.argmax(probs) == 1 else "BENIGN"
+        prediction = "MALIGNANCY" if np.argmax(probs) == 1 else "BENIGN"
         
         theme = "success"
-        if prediction == "MALIGNANT":
-            theme = "warning" if max_prob < 0.70 else "danger"
+        if prediction == "MALIGNANCY":
+            theme = "warning" if max_prob < 0.70 else "pink"
             
         return ui.value_box(
-            "Supervised Analysis",
+            "Prediction Model",
             f"{max_prob*100:.1f}%",
-            f"PREDICT {prediction}",
+            f"SUGGESTIVE OF {prediction}",
             theme=theme,
             class_="fs-2"
         )
@@ -131,11 +136,11 @@ def server(input, output, session):
         pred = gmm_global.predict(p_pca)[0]
         
         is_malignant = (pred == global_malig_id)
-        theme = "danger" if is_malignant else "success"
+        theme = "pink" if is_malignant else "success"
         label = "MALIGNANT ZONE" if is_malignant else "BENIGN ZONE"
         
         return ui.value_box(
-            "Topological Territory",
+            "Cluster Model 1",
             f"{max_prob*100:.1f}%",
             label,
             theme=theme,
@@ -155,19 +160,25 @@ def server(input, output, session):
         max_prob = np.max(probs)
         cluster_id = np.argmax(probs) + 1
         
+        # Define display variables based on outlier status
         if is_atypical:
-            theme = "info"
-            status_text = "ATYPICAL MORPHOLOGY"
-        elif max_prob < 0.50:
-            theme = "warning"
-            status_text = f"BORDERLINE CLUSTER {cluster_id}"
+            theme = "success"
+            display_value = "" # Hides the percentage
+            status_text = "NOT SIMILAR TO MALIGNANT MORPHOLOGY"
         else:
-            theme = "danger"
-            status_text = f"CLUSTER {cluster_id}"
+            # Show percentage for standard clusters
+            display_value = f"{max_prob*100:.1f}%"
+            status_text = f"SIMILAR TO CLUSTER {cluster_id}"
+            
+            # Use 'warning' for lower confidence or borderline cases
+            if max_prob < 0.50:
+                theme = "warning"
+            else:
+                theme = "pink"
         
         return ui.value_box(
-            "Morphological Density",
-            f"{max_prob*100:.1f}%",
+            "Cluster Model 2",
+            display_value,
             status_text,
             theme=theme,
             class_="fs-2"
@@ -189,9 +200,9 @@ def server(input, output, session):
         votes = sum([xgb_m, global_m, (not is_uncertain and xgb_m)])
         
         if votes == 3 and max_subtype_conf > 0.75:
-            return ui.HTML("<div class='alert alert-danger bg-danger text-white'>Unanimous High-Confidence Malignancy</div>")
+            return ui.HTML("<div class='alert' style='background-color: #e377c2; color: white;'>Suggestive of Malignancy</div>")
         elif votes == 0:
-            return ui.HTML("<div class='alert alert-success bg-success text-white'>Unanimous Benign Consensus</div>")
+            return ui.HTML("<div class='alert alert-success bg-success text-white'>Suggestive of Benign</div>")
         elif is_uncertain:
             return ui.HTML("<div class='alert alert-warning bg-warning text-dark'>CAUTION: Ambiguous Morphological Features</div>")
         else:
@@ -248,5 +259,28 @@ def server(input, output, session):
                                  name="Current Patient"))
         fig.update_layout(height=400, margin=dict(l=10,r=10,b=10,t=10), template="simple_white")
         return fig
+    
+    @render.ui
+    def feature_drivers():
+        X = get_patient().drop(columns=['diagnosis'])
+        
+        # 1. XGBoost Top Feature
+        importances = xgb_model.feature_importances_
+        indices = np.argsort(importances)[::-1]
+        top_feat_name = X.columns[indices[0]]
+        top_feat_weight = importances[indices[0]]
+        
+        # 2. GMM "Anomalous" Feature (Feature with highest deviation)
+        # This identifies which physical trait pushed the patient into their cluster
+        X_scaled = scaler_global.transform(X)
+        top_deviant_idx = np.argmax(np.abs(X_scaled))
+        top_deviant_name = X.columns[top_deviant_idx]
+        
+        return ui.div(
+            ui.p(ui.tags.b("Prediction Model: "), f"{top_feat_name.replace('_', ' ').title()}"),
+            ui.p(ui.tags.small(f"Contribution Weight: {top_feat_weight*100:.1f}%"), class_="text-muted"),
+            ui.p(ui.tags.b("Cluster Model 1: "), f"{top_deviant_name.replace('_', ' ').title()}"),
+            class_="p-2 border rounded bg-light"
+        )
 
 app = App(app_ui, server)
