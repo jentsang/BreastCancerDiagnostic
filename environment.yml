@@ -2,16 +2,17 @@ name: breast_cancer_diagnostic
 channels:
   - conda-forge
 dependencies:
-  - python=3.12
-  - pandas
   - numpy
-  - scikit-learn
-  - matplotlib
-  - seaborn
+  - python=3.12
   - plotly
   - shiny
-  - shinywidgets
   - jupyter
-  - ipykernel
-  - anywidget
   - python-dotenv
+  - scikit-learn
+  - pandas
+  - ipykernel
+  - matplotlib
+  - anywidget
+  - seaborn
+  - shinywidgets
+  - xgboost
