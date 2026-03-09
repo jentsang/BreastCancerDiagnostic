@@ -2,6 +2,11 @@
 
 > An interactive diagnostic and visualization tool designed to compare morphological features between benign and malignant cases in breast cancer.
 
+[Live App](jentsang-breast-cancer-diagnostic.share.connect.posit.cloud/)
+
+## Demo
+![Dashboard Demo](presentation/demo.gif)
+
 ## Installation & Local Development
 
 ### 1. Clone the repository
