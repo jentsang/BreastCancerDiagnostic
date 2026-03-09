@@ -41,11 +41,14 @@ Features are computed from a digitized image of a fine needle aspirate (FNA) of 
 ---
 
 ### Contributors
-* **Jennifer Tsang**
-* **William Lee**
 * **Abhinav Aggarwal**
+* **Jennifer Tsang**
 * **Kevin Dong**
 * **Lila Chan**
+* **William Lee**
+
+
+
 
 ### License
 This project is licensed under the MIT License.
